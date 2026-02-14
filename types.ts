@@ -20,6 +20,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
+  address?: string;
   isAdmin: boolean;
 }
 
@@ -30,5 +32,7 @@ export enum Page {
   CHECKOUT = 'checkout',
   PRODUCT_DETAIL = 'product_detail',
   ORDERS = 'orders',
-  SETTINGS = 'settings'
+  SETTINGS = 'settings',
+  LOGIN = 'login',
+  PROFILE = 'profile'
 }

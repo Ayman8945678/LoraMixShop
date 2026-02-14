@@ -1,19 +1,19 @@
 
 import React from 'react';
 import { ShoppingBag, User, Search, Menu } from 'lucide-react';
-import { Page } from '../types';
+import { Page, User as UserType } from '../types';
 
 interface NavbarProps {
   onNavigate: (page: Page) => void;
   onToggleSidebar: () => void;
   cartCount: number;
+  user: UserType | null;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ onNavigate, onToggleSidebar, cartCount }) => {
+const Navbar: React.FC<NavbarProps> = ({ onNavigate, onToggleSidebar, cartCount, user }) => {
   return (
     <nav className="sticky top-0 z-40 bg-white/70 backdrop-blur-xl border-b border-gray-100 px-6 py-4 flex items-center justify-between transition-all">
       <div className="flex items-center gap-6">
-        {/* Only show menu toggle on mobile */}
         <button 
           onClick={onToggleSidebar}
           className="group flex items-center gap-3 px-4 py-2 bg-gray-50 hover:bg-slate-900 rounded-full transition-all duration-500 border border-gray-100 lg:hidden"
@@ -23,7 +23,6 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onToggleSidebar, cartCount 
           <span className="text-[10px] font-black uppercase tracking-[0.2em] group-hover:text-white transition-colors">Menu</span>
         </button>
         
-        {/* Hide logo on desktop navbar because the sidebar logo is persistent */}
         <h1 
           className="text-2xl font-black tracking-tighter cursor-pointer group flex items-center gap-1 lg:hidden"
           onClick={() => onNavigate(Page.HOME)}
@@ -32,7 +31,6 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onToggleSidebar, cartCount 
           <span className="font-light text-slate-400 group-hover:text-[#D4AF37] transition-colors duration-500">GADGET</span>
         </h1>
 
-        {/* Desktop-only Search Bar mockup */}
         <div className="hidden lg:flex items-center gap-4 bg-gray-50 px-5 py-2.5 rounded-full border border-gray-100 min-w-[300px]">
           <Search size={16} className="text-slate-400" />
           <input 
@@ -44,10 +42,10 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, onToggleSidebar, cartCount 
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="p-2.5 text-slate-500 hover:text-[#D4AF37] hover:bg-slate-50 rounded-full transition-all lg:hidden">
-          <Search size={20} strokeWidth={2.5} />
-        </button>
-        <button className="p-2.5 text-slate-500 hover:text-[#D4AF37] hover:bg-slate-50 rounded-full transition-all">
+        <button 
+          onClick={() => onNavigate(user ? Page.PROFILE : Page.LOGIN)}
+          className="p-2.5 text-slate-500 hover:text-[#D4AF37] hover:bg-slate-50 rounded-full transition-all"
+        >
           <User size={20} strokeWidth={2.5} />
         </button>
         <button 

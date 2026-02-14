@@ -1,16 +1,18 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowRight, Loader2, AlertCircle, Database, Wifi, WifiOff, RefreshCw } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import Sidebar from './components/Sidebar';
 import ProductCard from './components/ProductCard';
 import ProductDetail from './components/ProductDetail';
 import Cart from './components/Cart';
+import Auth from './components/Auth';
+import Profile from './components/Profile';
 import GeminiAssistant from './components/GeminiAssistant';
-import { Product, CartItem, Page } from './types';
+import { Product, CartItem, Page, User } from './types';
 import { MOCK_PRODUCTS } from './constants';
-import { supabase } from './services/supabase';
+import { supabase, profileService } from './services/supabase';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>(Page.HOME);
@@ -18,9 +20,11 @@ const App: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState<'online' | 'offline' | 'error'>('offline');
   const [dbError, setDbError] = useState<string | null>(null);
 
   const fetchProducts = useCallback(async () => {
@@ -34,18 +38,19 @@ const App: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        // Handle specific "Table not found" error
-        if (error.code === 'PGRST116' || error.message.includes('schema cache')) {
-          console.warn('Supabase table "products" not found. Falling back to mock data. Please create the table in Supabase SQL Editor.');
-          setDbError('Database table "products" is missing. Showing local collection instead.');
+        setDbStatus('error');
+        if (error.code === 'PGRST116' || error.message.includes('relation "products" does not exist')) {
+          setDbError('Database table "products" is missing in your Supabase project.');
         } else {
-          console.error('Supabase error:', error.message);
+          setDbError(error.message);
         }
-      } else if (data && data.length > 0) {
-        setProducts(data);
+      } else if (data) {
+        setProducts(data.length > 0 ? data : MOCK_PRODUCTS);
+        setDbStatus('online');
       }
     } catch (err) {
-      console.error('Failed to connect to Supabase:', err);
+      setDbStatus('error');
+      setDbError('Could not connect to database server.');
     } finally {
       setIsLoading(false);
     }
@@ -55,8 +60,35 @@ const App: React.FC = () => {
     fetchProducts();
   }, [fetchProducts]);
 
-  const categories = ['All', ...new Set(products.map(p => p.category))];
-  const latestProducts = [...products].reverse().slice(0, 10);
+  const handleAuthComplete = async (user: User) => {
+    setIsLoading(true);
+    // Try to get existing profile from DB
+    const dbProfile = await profileService.getProfile(user.email);
+    if (dbProfile) {
+      setCurrentUser({ ...user, ...dbProfile });
+    } else {
+      setCurrentUser(user);
+    }
+    setIsLoading(false);
+    setCurrentPage(Page.HOME);
+  };
+
+  const handleUpdateUser = async (updatedUser: User) => {
+    const result = await profileService.upsertProfile(updatedUser);
+    if (result.success) {
+      setCurrentUser(updatedUser);
+    } else {
+      // Fallback update even if DB fails
+      setCurrentUser(updatedUser);
+      console.error('Persistance failed, updated local state only.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setCurrentPage(Page.HOME);
+    setIsSidebarOpen(false);
+  };
 
   const handleAddToCart = useCallback((product: Product) => {
     setCart(prev => {
@@ -87,6 +119,7 @@ const App: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  const latestProducts = [...products].reverse().slice(0, 10);
   const filteredProducts = activeCategory === 'All' 
     ? products 
     : products.filter(p => p.category === activeCategory);
@@ -99,8 +132,8 @@ const App: React.FC = () => {
           <div className="absolute inset-0 bg-[#D4AF37] blur-2xl opacity-20 animate-pulse"></div>
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-white font-black uppercase tracking-[0.5em] text-xs">Connecting to Vault</h2>
-          <p className="text-slate-500 text-[10px] uppercase tracking-widest">Lora Mix Shop Backend</p>
+          <h2 className="text-white font-black uppercase tracking-[0.5em] text-xs">Synchronizing Vault</h2>
+          <p className="text-slate-500 text-[10px] uppercase tracking-widest">Checking secure database layers...</p>
         </div>
       </div>
     );
@@ -113,19 +146,45 @@ const App: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
         onNavigate={handleNavigate}
         currentPage={currentPage}
+        user={currentUser}
+        onLogout={handleLogout}
       />
 
       <div className="lg:pl-60 flex flex-col min-h-screen">
-        {dbError && (
-          <div className="bg-[#D4AF37]/10 border-b border-[#D4AF37]/20 px-6 py-2 flex items-center justify-center gap-2">
-            <AlertCircle size={14} className="text-[#D4AF37]" />
-            <p className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider">{dbError}</p>
+        {/* Database Status Bar */}
+        <div className={`px-6 py-2 flex items-center justify-between border-b transition-colors duration-500 ${
+          dbStatus === 'online' ? 'bg-green-50/50 border-green-100' : 
+          dbStatus === 'error' ? 'bg-red-50/50 border-red-100' : 'bg-slate-50 border-slate-100'
+        }`}>
+          <div className="flex items-center gap-3">
+            {dbStatus === 'online' ? (
+              <Wifi size={12} className="text-green-500" />
+            ) : dbStatus === 'error' ? (
+              <WifiOff size={12} className="text-red-500" />
+            ) : (
+              <RefreshCw size={12} className="text-slate-400 animate-spin" />
+            )}
+            <span className={`text-[8px] font-black uppercase tracking-[0.2em] ${
+              dbStatus === 'online' ? 'text-green-600' : 
+              dbStatus === 'error' ? 'text-red-600' : 'text-slate-500'
+            }`}>
+              {dbStatus === 'online' ? 'Database Linked' : dbStatus === 'error' ? 'Sync Error' : 'Connecting...'}
+            </span>
           </div>
-        )}
+          {dbError && (
+            <div className="flex items-center gap-2">
+              <AlertCircle size={10} className="text-red-400" />
+              <p className="text-[8px] font-bold text-red-400 uppercase tracking-tight truncate max-w-[200px]">{dbError}</p>
+              <button onClick={fetchProducts} className="ml-2 text-[8px] font-black text-slate-900 underline uppercase">Retry</button>
+            </div>
+          )}
+        </div>
+
         <Navbar 
           onNavigate={handleNavigate} 
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           cartCount={cart.reduce((acc, item) => acc + item.quantity, 0)} 
+          user={currentUser}
         />
 
         <main className="flex-1">
@@ -138,8 +197,7 @@ const App: React.FC = () => {
                 }} 
                 latestProducts={latestProducts}
               />
-              
-              <section className="px-6 md:px-12 max-w-7xl mx-auto">
+              <section id="full-collection" className="px-6 md:px-12 max-w-7xl mx-auto">
                 <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                   <div className="space-y-2">
                     <p className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.4em]">Curated For You</p>
@@ -152,75 +210,8 @@ const App: React.FC = () => {
                     View All Gallery <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
                   {products.slice(0, 6).map(product => (
-                    <ProductCard 
-                      key={product.id} 
-                      product={product} 
-                      onAddToCart={handleAddToCart} 
-                      onClick={(p) => handleNavigate(Page.PRODUCT_DETAIL, p)}
-                    />
-                  ))}
-                </div>
-              </section>
-
-              <section className="bg-slate-900 py-24 px-6 md:px-12 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-[40%] h-full bg-[#D4AF37]/10 blur-[120px] rounded-full translate-x-1/2" />
-                <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
-                  <div className="space-y-8 relative z-10">
-                    <h2 className="text-5xl font-black leading-tight text-white tracking-tighter uppercase">NO <span className="text-[#D4AF37]">COMPROMISE</span> ON QUALITY.</h2>
-                    <p className="text-slate-400 text-lg leading-relaxed font-medium max-w-md">
-                      Each piece in our collection is meticulously vetted to ensure it meets our standard of technological and aesthetic excellence.
-                    </p>
-                    <div className="flex gap-16 pt-4">
-                      <div className="space-y-1">
-                        <h4 className="text-3xl font-black text-white">24K+</h4>
-                        <p className="text-[9px] text-[#D4AF37] font-black uppercase tracking-[0.3em]">Collectors</p>
-                      </div>
-                      <div className="space-y-1">
-                        <h4 className="text-3xl font-black text-white">99.9%</h4>
-                        <p className="text-[9px] text-[#D4AF37] font-black uppercase tracking-[0.3em]">Satisfaction</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-[3rem] overflow-hidden group relative">
-                    <img 
-                      src="https://images.unsplash.com/photo-1555680202-c86f0e12f086?auto=format&fit=crop&w=1200&q=80" 
-                      alt="Luxury Design" 
-                      className="w-full aspect-video object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-1000"
-                    />
-                    <div className="absolute inset-0 bg-slate-900/20 group-hover:bg-transparent transition-colors duration-500" />
-                  </div>
-                </div>
-              </section>
-
-              <section id="full-collection" className="px-6 md:px-12 max-w-7xl mx-auto pt-8">
-                <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-8">
-                  <div>
-                    <h2 className="text-4xl font-black tracking-tighter text-slate-900 uppercase">The Universe</h2>
-                    <p className="text-slate-400 font-bold text-[9px] uppercase tracking-[0.4em] mt-2">Browse the complete archive</p>
-                  </div>
-                  
-                  <div className="flex gap-2 p-1.5 bg-gray-100 rounded-full overflow-x-auto no-scrollbar">
-                    {categories.map(cat => (
-                      <button 
-                        key={cat}
-                        onClick={() => setActiveCategory(cat)}
-                        className={`px-6 py-2 rounded-full text-[9px] font-black uppercase tracking-[0.2em] transition-all duration-500 whitespace-nowrap ${
-                          activeCategory === cat 
-                            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' 
-                            : 'text-slate-400 hover:text-slate-900'
-                        }`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-6 animate-in fade-in duration-700">
-                  {filteredProducts.map(product => (
                     <ProductCard 
                       key={product.id} 
                       product={product} 
@@ -233,6 +224,19 @@ const App: React.FC = () => {
             </div>
           )}
 
+          {currentPage === Page.LOGIN && (
+            <Auth onAuthComplete={handleAuthComplete} onBack={() => setCurrentPage(Page.HOME)} />
+          )}
+
+          {currentPage === Page.PROFILE && currentUser && (
+            <Profile 
+              user={currentUser} 
+              onUpdate={handleUpdateUser} 
+              onLogout={handleLogout}
+              onBack={() => setCurrentPage(Page.HOME)} 
+            />
+          )}
+
           {currentPage === Page.SHOP && (
             <div className="py-16 px-6 md:px-12 bg-white min-h-screen">
               <div className="max-w-7xl mx-auto space-y-12">
@@ -240,14 +244,8 @@ const App: React.FC = () => {
                   <h2 className="text-4xl font-black tracking-tighter text-slate-900 uppercase">Archive Gallery</h2>
                   <div className="flex items-center gap-6">
                     <span className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.3em]">{filteredProducts.length} Specimens Found</span>
-                    <select className="bg-gray-50 border border-gray-100 rounded-full px-6 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] outline-none transition-all focus:ring-2 focus:ring-slate-900">
-                      <option>Latest Arrivals</option>
-                      <option>Highest Value</option>
-                      <option>Lowest Value</option>
-                    </select>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-6">
                   {filteredProducts.map(product => (
                     <ProductCard 
@@ -275,15 +273,19 @@ const App: React.FC = () => {
               items={cart} 
               onUpdateQuantity={handleUpdateQuantity} 
               onRemove={handleRemoveFromCart} 
-              onCheckout={() => alert('Initiating Secure Luxury Checkout...')} 
+              onCheckout={() => currentUser ? alert('Initiating Secure Luxury Checkout...') : setCurrentPage(Page.LOGIN)} 
             />
           )}
 
           {currentPage === Page.ORDERS && (
             <div className="py-24 px-6 text-center space-y-4">
               <h2 className="text-3xl font-black uppercase tracking-tighter">Your Orders</h2>
-              <p className="text-slate-400 font-medium">You have no active orders in your vault history.</p>
-              <button onClick={() => handleNavigate(Page.SHOP)} className="px-8 py-3 bg-slate-900 text-white rounded-full font-black uppercase text-[10px] tracking-widest">Start Collecting</button>
+              <p className="text-slate-400 font-medium">
+                {currentUser ? "You have no active orders in your vault history." : "Please sign in to view your orders."}
+              </p>
+              {!currentUser && (
+                <button onClick={() => setCurrentPage(Page.LOGIN)} className="px-8 py-3 bg-slate-900 text-white rounded-full font-black uppercase text-[10px] tracking-widest">Sign In</button>
+              )}
             </div>
           )}
 
@@ -291,16 +293,6 @@ const App: React.FC = () => {
             <div className="py-24 px-6 text-center space-y-4">
               <h2 className="text-3xl font-black uppercase tracking-tighter">Vault Settings</h2>
               <p className="text-slate-400 font-medium">Configure your command center preferences here.</p>
-              <div className="max-w-md mx-auto bg-white p-8 rounded-3xl border border-gray-100 shadow-sm text-left space-y-6">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-900">Notifications</span>
-                  <div className="w-10 h-5 bg-green-500 rounded-full relative"><div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div></div>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-black uppercase tracking-widest text-slate-900">Dark Interface</span>
-                  <div className="w-10 h-5 bg-slate-200 rounded-full relative"><div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full"></div></div>
-                </div>
-              </div>
             </div>
           )}
 
@@ -313,32 +305,9 @@ const App: React.FC = () => {
                     Redefining the boundaries of technological luxury since 2024. Curated for the few, appreciated by the many.
                   </p>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-16">
-                  <div className="space-y-6">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-[#D4AF37]">Explore</h4>
-                    <ul className="space-y-4 text-slate-400 text-xs font-bold uppercase tracking-widest">
-                      <li><button onClick={() => handleNavigate(Page.HOME)} className="hover:text-white transition-colors">Home</button></li>
-                      <li><button onClick={() => handleNavigate(Page.SHOP)} className="hover:text-white transition-colors">Gallery</button></li>
-                      <li>Vault</li>
-                    </ul>
-                  </div>
-                  <div className="space-y-6">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-[#D4AF37]">Legacy</h4>
-                    <ul className="space-y-4 text-slate-400 text-xs font-bold uppercase tracking-widest">
-                      <li>Philosophy</li>
-                      <li>Heritage</li>
-                      <li>Terms</li>
-                    </ul>
-                  </div>
-                </div>
               </div>
               <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
                 <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.4em]">© 2024 Artifacts Collective. All Rights Reserved.</p>
-                <div className="flex gap-8">
-                   <div className="h-6 w-10 bg-white/5 rounded-md" />
-                   <div className="h-6 w-10 bg-white/5 rounded-md" />
-                   <div className="h-6 w-10 bg-white/5 rounded-md" />
-                </div>
               </div>
             </div>
           </footer>
