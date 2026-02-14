@@ -1,0 +1,7 @@
+{
+  "name": "EliteGadget - Luxury Ecommerce",
+  "description": "A premium, AI-powered e-commerce experience for high-end gadgets featuring a minimalist design and an integrated Gemini shopping assistant.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
