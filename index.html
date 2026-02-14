@@ -38,8 +38,18 @@
   }
 }
 </script>
+<script>
+    // Shim for process.env to prevent ReferenceErrors in the browser
+    window.process = {
+        env: {
+            API_KEY: "" // This will be populated by the deployment environment
+        }
+    };
+</script>
 </head>
 <body>
     <div id="root"></div>
+    <!-- Load the main entry point -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>

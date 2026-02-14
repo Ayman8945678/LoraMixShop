@@ -3,11 +3,20 @@ import {GoogleGenAI} from "@google/genai";
 import { Product } from "../types";
 import { MOCK_PRODUCTS } from "../constants";
 
-// Fix: Always use the named parameter `apiKey` and access `process.env.API_KEY` directly for initialization.
-const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. AI assistant features will be limited.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 export const getShoppingAdvice = async (userPrompt: string, cart: Product[]): Promise<string> => {
   try {
+    const ai = getAIClient();
+    if (!ai) return "I'm currently maintaining my circuits. How else can I assist you with our collection?";
+
     const productsContext = MOCK_PRODUCTS.map(p => 
       `${p.name} ($${p.price}): ${p.description}`
     ).join('\n');
@@ -16,7 +25,6 @@ export const getShoppingAdvice = async (userPrompt: string, cart: Product[]): Pr
       ? `User currently has these in cart: ${cart.map(c => c.name).join(', ')}`
       : "User's cart is empty.";
 
-    // Fix: Call `generateContent` directly from `ai.models` with both model and contents.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `You are an elite, high-end shopping assistant for "EliteGadget".
@@ -34,7 +42,6 @@ export const getShoppingAdvice = async (userPrompt: string, cart: Product[]): Pr
       },
     });
 
-    // Fix: Access the `.text` property directly as it is a getter, not a method.
     return response.text || "I apologize, I'm having trouble processing that right now. How else can I assist you with your luxury tech needs?";
   } catch (error) {
     console.error("Gemini Error:", error);
