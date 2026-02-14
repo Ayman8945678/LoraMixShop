@@ -8,10 +8,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Global scaling for Desktop to match user request of 67% zoom */
+        @media (min-width: 1280px) {
+            html {
+                zoom: 0.67;
+                -moz-transform: scale(0.67);
+                -moz-transform-origin: top center;
+            }
+        }
+
         body {
             font-family: 'Inter', sans-serif;
             background-color: #fafafa;
+            overflow-x: hidden;
         }
+        
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -24,6 +35,11 @@
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
+        }
+
+        /* Prevent potential layout shifts from zoom */
+        .lg\:pl-60 {
+            transition: padding 0.3s ease;
         }
     </style>
 <script type="importmap">
@@ -42,7 +58,7 @@
     // Shim for process.env to prevent ReferenceErrors in the browser
     window.process = {
         env: {
-            API_KEY: "" // This will be populated by the deployment environment
+            API_KEY: "" 
         }
     };
 </script>
